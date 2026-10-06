@@ -39,6 +39,14 @@ static std::string convertString(std::string &str, const char *charset) {
     
     iconv_t cd = iconv_open("UTF-8", charset);
     
+    // iconv doesn't necessarily know the charset name we were given: uchardet
+    // and libiconv disagree on a few of them (uchardet reports
+    // "MAC-CENTRALEUROPE", libiconv only knows "MacCentralEurope"). Passing the
+    // resulting invalid descriptor to iconv() below crashes, so leave the string
+    // as it is instead.
+    if (cd == (iconv_t)-1)
+        return std::string(str);
+    
     size_t inLen = str.size();
     size_t outLen = inLen * 4;
     std::string buf(outLen, '\0');
