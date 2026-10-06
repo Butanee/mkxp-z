@@ -1,0 +1,34 @@
+# Fixes the MJIT min-header generation step failing when Ruby is built on
+# Windows from MSYS2:
+#
+#     error in initial header file:
+#     C:/msys64/tmp/xxxx.c:1:10: fatal error: /tmp/xxxx.h: No such file or directory
+#     make: *** [uncommon.mk:251: .ext/include/x64-mingw64/rb_mjit_min_header-3.1.3.h] Error 1
+#
+# The check code is written to a temp .h file and a temp .c file containing
+# `#include "<temp .h path>"`. MINIRUBY here is the Cygwin ruby, whose Tempfile
+# directory comes from TMP. MSYS2 bash sets TMP=/tmp, but when native ninja.exe
+# spawns make, the MSYS2 runtime rewrites TMPDIR/TMP/TEMP to a backslashed
+# Windows path such as C:\msys64\tmp, which Cygwin ruby does not accept as a
+# directory; it then falls back to '/tmp', and the native compiler cannot open a
+# "/tmp/..." path inside an include. Generating the temp files in the current
+# directory makes the generated include relative, which resolves correctly.
+#
+# Note: exporting TMPDIR from the build script does not help, because the
+# rewrite happens at the ninja -> make boundary. MSYS2_ENV_CONV_EXCL does not
+# prevent it either.
+
+--- a/tool/transform_mjit_header.rb
++++ b/tool/transform_mjit_header.rb
+@@ -194,9 +194,9 @@
+   def self.with_code(code)
+     # for `system_header` pragma which can't be in the main file.
+-    Tempfile.open(['', '.h'], mode: File::BINARY) do |f|
++    Tempfile.open(['', '.h'], '.', mode: File::BINARY) do |f|
+       f.puts code
+       f.close
+-      Tempfile.open(['', '.c'], mode: File::BINARY) do |c|
++      Tempfile.open(['', '.c'], '.', mode: File::BINARY) do |c|
+         c.puts <<SRC
+ #include "#{f.path}"
+ SRC
